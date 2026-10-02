@@ -31,20 +31,24 @@ import { Plan, Wall, Door, Window, Room } from './types';
 import { PlanMeta } from './metadata';
 
 const ROOM_NAME_MAP: Record<string, string> = {
-  'LivingRoom': 'Living Room',
-  'Kitchen': 'Kitchen',
-  'Kitchen Open': 'Kitchen / Living',
-  'Bedroom': 'Bedroom',
-  'Bath': 'Bathroom',
-  'Entry': 'Entry',
-  'Lobby': 'Lobby',
-  'Storage': 'Storage',
-  'DraughtLobby': 'Hallway',
-  'Closet': 'Closet',
-  'Closet WalkIn': 'Walk-in Closet',
-  'Undefined': 'Room',
-  'Outdoor': 'Outdoor',
-  'Outdoor Balcony': 'Balcony',
+  'LivingRoom': 'Гостиная',
+  'Kitchen': 'Кухня',
+  'Kitchen Open': 'Кухня-гостиная',
+  'Bedroom': 'Спальня',
+  'Bath': 'Санузел',
+  'Entry': 'Прихожая',
+  'Entry Lobby': 'Прихожая',
+  'Toilet': 'Туалет',
+  'Utility': 'Хозяйственная',
+  'Sauna': 'Сауна',
+  'Lobby': 'Холл',
+  'Storage': 'Кладовая',
+  'DraughtLobby': 'Тамбур',
+  'Closet': 'Гардероб',
+  'Closet WalkIn': 'Гардеробная',
+  'Undefined': 'Комната',
+  'Outdoor': 'Участок',
+  'Outdoor Balcony': 'Балкон',
 };
 
 function getRoomName(classStr: string): { name: string; type: string } {

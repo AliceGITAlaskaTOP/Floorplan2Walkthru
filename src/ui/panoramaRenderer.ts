@@ -15,9 +15,7 @@
 
 import * as THREE from 'three';
 
-const PANO_WIDTH = 8192;
-const PANO_HEIGHT = 4096;
-const CUBE_FACE_SIZE = 4096; // per-face resolution for the cubemap
+const DEFAULT_PANO_WIDTH = 4096; // per-face resolution for the cubemap
 
 // Fullscreen quad shader: cubemap → equirectangular
 const EQUIRECT_VERT = `
@@ -82,7 +80,9 @@ export class PanoramaRenderer {
    *
    * Returns { bare: Blob, furnished: Blob }.
    */
-  async capture(position: THREE.Vector3): Promise<{ bare: Blob; furnished: Blob }> {
+  async capture(position: THREE.Vector3, requestedWidth = DEFAULT_PANO_WIDTH): Promise<{ bare: Blob; furnished: Blob }> {
+    const width = Math.min([2048, 4096, 8192].includes(requestedWidth) ? requestedWidth : DEFAULT_PANO_WIDTH, this.renderer.capabilities.maxTextureSize);
+    const height = width / 2;
     this.overlay.style.display = 'flex';
 
     // Save renderer state
@@ -97,7 +97,7 @@ export class PanoramaRenderer {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     // Shared equirect conversion resources
-    const equirectRT = new THREE.WebGLRenderTarget(PANO_WIDTH, PANO_HEIGHT, {
+    const equirectRT = new THREE.WebGLRenderTarget(width, height, {
       format: THREE.RGBAFormat,
       type: THREE.UnsignedByteType,
     });
@@ -112,14 +112,15 @@ export class PanoramaRenderer {
     const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const quadScene = new THREE.Scene();
     quadScene.add(fullscreenQuad);
-    const pixelBuf = new Uint8Array(PANO_WIDTH * PANO_HEIGHT * 4);
+    const pixelBuf = new Uint8Array(width * height * 4);
     const tmpCanvas = document.createElement('canvas');
-    tmpCanvas.width = PANO_WIDTH;
-    tmpCanvas.height = PANO_HEIGHT;
+    tmpCanvas.width = width;
+    tmpCanvas.height = height;
     const tmpCtx = tmpCanvas.getContext('2d')!;
 
+    try {
     // ── Pass 1: Bare (plain matte, no furniture) ──
-    this.progressText.textContent = 'Rendering bare panorama...';
+    this.progressText.textContent = 'Снимаем панораму без мебели…';
     await this.yieldFrame();
 
     const bareBlob = await this.renderPass(position, () => {
@@ -160,7 +161,7 @@ export class PanoramaRenderer {
     }, equirectRT, equirectMat, quadScene, orthoCamera, pixelBuf, tmpCanvas, tmpCtx);
 
     // ── Pass 2: Furnished (full textures + furniture, white matte floor) ──
-    this.progressText.textContent = 'Rendering furnished panorama...';
+    this.progressText.textContent = 'Снимаем панораму с мебелью…';
     await this.yieldFrame();
 
     const furnishedBlob = await this.renderPass(position, () => {
@@ -190,6 +191,8 @@ export class PanoramaRenderer {
       };
     }, equirectRT, equirectMat, quadScene, orthoCamera, pixelBuf, tmpCanvas, tmpCtx);
 
+    return { bare: bareBlob, furnished: furnishedBlob };
+    } finally {
     // Cleanup shared resources
     equirectRT.dispose();
     equirectMat.dispose();
@@ -205,7 +208,7 @@ export class PanoramaRenderer {
     this.scene.background = savedBg;
 
     this.overlay.style.display = 'none';
-    return { bare: bareBlob, furnished: furnishedBlob };
+    }
   }
 
   /**
@@ -223,10 +226,11 @@ export class PanoramaRenderer {
     tmpCanvas: HTMLCanvasElement,
     tmpCtx: CanvasRenderingContext2D,
   ): Promise<Blob> {
+    const width = equirectRT.width, height = equirectRT.height;
     const teardown = setupScene();
 
     // Render cubemap
-    const cubeRT = new THREE.WebGLCubeRenderTarget(CUBE_FACE_SIZE, {
+    const cubeRT = new THREE.WebGLCubeRenderTarget(Math.min(width / 4, this.renderer.capabilities.maxCubemapSize), {
       format: THREE.RGBAFormat,
       type: THREE.UnsignedByteType,
       generateMipmaps: false,
@@ -234,10 +238,9 @@ export class PanoramaRenderer {
     });
     const cubeCamera = new THREE.CubeCamera(0.05, 200, cubeRT);
     cubeCamera.position.copy(position);
-    cubeCamera.update(this.renderer, this.scene);
-
-    // Restore scene immediately after cubemap capture
-    teardown();
+    try { cubeCamera.update(this.renderer, this.scene); }
+    catch (error) { cubeRT.dispose(); throw error; }
+    finally { teardown(); }
 
     // Convert cubemap → equirectangular
     equirectMat.uniforms.tCube.value = cubeRT.texture;
@@ -253,14 +256,14 @@ export class PanoramaRenderer {
     this.renderer.toneMappingExposure = savedExp;
 
     // Read pixels
-    this.renderer.readRenderTargetPixels(equirectRT, 0, 0, PANO_WIDTH, PANO_HEIGHT, pixelBuf);
-    this.flipY(pixelBuf, PANO_WIDTH, PANO_HEIGHT);
+    this.renderer.readRenderTargetPixels(equirectRT, 0, 0, width, height, pixelBuf);
+    this.flipY(pixelBuf, width, height);
     cubeRT.dispose();
 
     // Encode PNG
     const imageData = new ImageData(
       new Uint8ClampedArray(pixelBuf.slice(0).buffer),
-      PANO_WIDTH, PANO_HEIGHT,
+      width, height,
     );
     tmpCtx.putImageData(imageData, 0, 0);
 
@@ -300,8 +303,8 @@ export class PanoramaRenderer {
     this.overlay.innerHTML = `
       <div style="background:#1a1a2e; padding:28px 36px; border-radius:12px;
                   text-align:center; border:1px solid rgba(255,255,255,0.1);">
-        <h3 style="margin:0 0 12px; font-size:16px;">Generating Panorama</h3>
-        <p id="pano-progress" style="margin:0; color:#888; font-size:13px;">Initializing...</p>
+        <h3 style="margin:0 0 12px; font-size:16px;">Создаём панораму 360°</h3>
+        <p id="pano-progress" style="margin:0; color:#888; font-size:13px;">Подготавливаем сцену…</p>
       </div>`;
     document.body.appendChild(this.overlay);
     this.progressText = this.overlay.querySelector('#pano-progress')!;

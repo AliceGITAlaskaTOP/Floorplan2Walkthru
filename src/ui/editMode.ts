@@ -551,7 +551,7 @@ export class EditModeController {
 
   private updateGizmoLabel() {
     if (this.selectedInstanceId) {
-      this.gizmoLabel.textContent = this.gizmoMode === 'move' ? '↕ Move / Rotate' : '⤡ Scale / Height';
+      this.gizmoLabel.textContent = this.gizmoMode === 'move' ? 'Перемещение / поворот' : 'Масштаб / высота';
       this.gizmoLabel.classList.add('visible');
     } else {
       this.gizmoLabel.classList.remove('visible');

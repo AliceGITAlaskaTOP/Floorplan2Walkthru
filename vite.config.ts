@@ -6,6 +6,7 @@ export default defineConfig({
   assetsInclude: ['**/*.hdr'],
   server: {
     port: 5173,
+    allowedHosts: ['terminal.local'],
   },
   plugins: [
     {
@@ -21,7 +22,7 @@ export default defineConfig({
                 const base64 = image.replace(/^data:image\/png;base64,/, '');
                 const dir = path.resolve(__dirname, 'screenshots');
                 if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-                const filename = name ? `birdseye_${name}.png` : 'birdseye.png';
+                const filename = name ? `birdseye_${String(name).replace(/[^a-z0-9_-]/gi, "_").slice(0, 80)}.png` : 'birdseye.png';
                 fs.writeFileSync(path.join(dir, filename), Buffer.from(base64, 'base64'));
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ ok: true }));

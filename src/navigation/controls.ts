@@ -48,7 +48,8 @@ export class NavigationController {
     this.pointerLock = new PointerLockControls(camera, domElement);
 
     document.addEventListener('keydown', (e) => {
-      if (document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement) return;
+      if (document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement || (e.target instanceof HTMLElement && e.target.matches('select, button, a'))) return;
+      if (!document.getElementById('controls-overlay')?.classList.contains('hidden')) return;
       switch (e.code) {
         case 'KeyW': case 'ArrowUp': this.moveForward = true; break;
         case 'KeyS': case 'ArrowDown': this.moveBackward = true; break;
@@ -88,6 +89,26 @@ export class NavigationController {
       }
     });
 
+    let touchX = 0, touchY = 0;
+    domElement.addEventListener('touchstart', (event) => {
+      touchX = event.touches[0].clientX; touchY = event.touches[0].clientY;
+    }, { passive: true });
+    domElement.addEventListener('touchmove', (event) => {
+      event.preventDefault();
+      const touch = event.touches[0];
+      this.euler.setFromQuaternion(this.camera.quaternion);
+      this.euler.y -= (touch.clientX - touchX) * .004;
+      this.euler.x -= (touch.clientY - touchY) * .004;
+      this.euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, this.euler.x));
+      this.camera.quaternion.setFromEuler(this.euler);
+      touchX = touch.clientX; touchY = touch.clientY;
+    }, { passive: false });
+    window.addEventListener('blur', () => {
+      this.moveForward = this.moveBackward = this.moveLeft = this.moveRight = false;
+      this.velocity.set(0, 0, 0);
+      this.isDragging = false;
+    });
+
     this.pointerLock.addEventListener('unlock', () => {
       if (this.mouseMode === 'locked') {
         this.mouseMode = 'free';
@@ -102,6 +123,13 @@ export class NavigationController {
         this.onModeChange?.('free');
       }
     });
+  }
+
+  setMovement(direction: 'forward' | 'backward' | 'left' | 'right', active: boolean) {
+    if (direction === 'forward') this.moveForward = active;
+    if (direction === 'backward') this.moveBackward = active;
+    if (direction === 'left') this.moveLeft = active;
+    if (direction === 'right') this.moveRight = active;
   }
 
   setModeChangeHandler(handler: (mode: MouseMode) => void) {
