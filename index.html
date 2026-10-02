@@ -1,431 +1,50 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architectural Walkthrough</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
-    canvas { display: block; }
-
-    .ui-panel {
-      font-family: system-ui, sans-serif;
-      font-size: 13px;
-      padding: 8px 12px;
-      border-radius: 6px;
-      border: 1px solid rgba(255,255,255,0.15);
-      background: rgba(0,0,0,0.7);
-      color: #ddd;
-      z-index: 50;
-    }
-
-    #picker-bar {
-      position: fixed;
-      top: 12px; left: 12px;
-      z-index: 50;
-      display: flex;
-      gap: 6px;
-      align-items: center;
-    }
-    #plan-picker {
-      cursor: pointer;
-    }
-    .picker-btn {
-      font-family: system-ui, sans-serif;
-      font-size: 12px;
-      padding: 6px 10px;
-      border-radius: 6px;
-      border: 1px solid rgba(255,255,255,0.15);
-      background: rgba(0,0,0,0.7);
-      color: #ddd;
-      cursor: pointer;
-      white-space: nowrap;
-    }
-    .picker-btn:hover { background: rgba(60,60,80,0.8); }
-
-    #controls-info {
-      position: fixed;
-      top: 12px; right: 12px;
-      line-height: 1.6;
-      pointer-events: none;
-      max-width: 220px;
-    }
-    #controls-info kbd {
-      display: inline-block;
-      padding: 1px 5px;
-      border-radius: 3px;
-      background: rgba(255,255,255,0.15);
-      font-family: inherit;
-      font-size: 12px;
-    }
-    #controls-info .mode-label {
-      color: #5cf;
-      font-weight: 600;
-      margin-bottom: 4px;
-    }
-
-    /* Minimap container: label + canvas stacked */
-    #minimap-container {
-      position: fixed;
-      bottom: 16px; right: 16px;
-      z-index: 50;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-    #room-label {
-      font-family: system-ui, sans-serif;
-      font-size: 0.85rem;
-      color: rgba(255,255,255,0.7);
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.4s;
-      text-shadow: 0 1px 4px rgba(0,0,0,0.8);
-      margin-bottom: 6px;
-    }
-    #minimap {
-      border: none;
-      border-radius: 8px;
-      background: transparent;
-      cursor: crosshair;
-    }
-
-    #crosshair {
-      position: fixed;
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      width: 4px; height: 4px;
-      border-radius: 50%;
-      background: rgba(255,255,255,0.4);
-      z-index: 50;
-      pointer-events: none;
-    }
-
-    /* Edit mode indicator */
-    #edit-mode-badge {
-      position: fixed;
-      top: 12px; left: 50%;
-      transform: translateX(-50%);
-      font-family: system-ui, sans-serif;
-      font-size: 12px;
-      font-weight: 600;
-      padding: 4px 14px;
-      border-radius: 12px;
-      background: rgba(255, 140, 0, 0.85);
-      color: #fff;
-      z-index: 60;
-      pointer-events: none;
-      display: none;
-      letter-spacing: 0.5px;
-    }
-    #gizmo-label {
-      margin-left: 6px;
-      padding: 2px 8px;
-      border-radius: 8px;
-      background: rgba(0,0,0,0.3);
-      font-size: 11px;
-      font-weight: 400;
-      display: none;
-    }
-    #gizmo-label.visible { display: inline; }
-
-    /* Object picker modal */
-    #object-picker-overlay {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.7);
-      z-index: 200;
-      display: none;
-      justify-content: center;
-      align-items: center;
-    }
-    #object-picker-overlay.visible { display: flex; }
-    #object-picker {
-      background: #1e1e2a;
-      border: 1px solid rgba(255,255,255,0.15);
-      border-radius: 10px;
-      padding: 16px;
-      width: 520px;
-      max-height: 70vh;
-      display: flex;
-      flex-direction: column;
-      font-family: system-ui, sans-serif;
-      color: #ddd;
-    }
-    #object-picker-search {
-      width: 100%;
-      padding: 8px 12px;
-      border: 1px solid rgba(255,255,255,0.2);
-      border-radius: 6px;
-      background: rgba(255,255,255,0.08);
-      color: #fff;
-      font-size: 14px;
-      outline: none;
-      margin-bottom: 12px;
-    }
-    #object-picker-search:focus {
-      border-color: rgba(0,200,255,0.5);
-    }
-    #object-picker-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-      overflow-y: auto;
-      max-height: 50vh;
-    }
-    .picker-card {
-      background: rgba(255,255,255,0.06);
-      border: 2px solid transparent;
-      border-radius: 8px;
-      padding: 8px;
-      cursor: pointer;
-      text-align: center;
-      transition: border-color 0.15s, background 0.15s;
-    }
-    .picker-card:hover {
-      border-color: rgba(0,200,255,0.5);
-      background: rgba(0,200,255,0.08);
-    }
-    .picker-card img {
-      width: 100%;
-      aspect-ratio: 1;
-      object-fit: contain;
-      border-radius: 4px;
-      background: rgba(0,0,0,0.3);
-    }
-    .picker-card .card-name {
-      font-size: 11px;
-      margin-top: 6px;
-      color: rgba(255,255,255,0.8);
-      line-height: 1.3;
-    }
-    .picker-card .card-dims {
-      font-size: 10px;
-      color: rgba(255,255,255,0.4);
-    }
-
-    /* Surface action menu */
-    #surface-menu {
-      position: fixed;
-      z-index: 150;
-      display: none;
-      font-family: system-ui, sans-serif;
-      background: #1e1e2a;
-      border: 1px solid rgba(255,255,255,0.2);
-      border-radius: 8px;
-      overflow: hidden;
-      min-width: 160px;
-    }
-    #surface-menu.visible, #furniture-menu.visible, #door-menu.visible { display: block; }
-    #furniture-menu, #door-menu {
-      position: fixed;
-      z-index: 150;
-      display: none;
-      font-family: system-ui, sans-serif;
-      background: #1e1e2a;
-      border: 1px solid rgba(255,255,255,0.2);
-      border-radius: 8px;
-      overflow: hidden;
-      min-width: 160px;
-    }
-    .surface-menu-item {
-      padding: 10px 16px;
-      cursor: pointer;
-      color: #ddd;
-      font-size: 13px;
-      border-bottom: 1px solid rgba(255,255,255,0.06);
-      transition: background 0.1s;
-    }
-    .surface-menu-item:hover { background: rgba(0,200,255,0.15); }
-    .surface-menu-item:last-child { border-bottom: none; }
-    .surface-menu-item.cancel { color: rgba(255,255,255,0.4); }
-
-    /* Texture picker (reuses object-picker layout) */
-    #texture-picker-overlay {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.7);
-      z-index: 200;
-      display: none;
-      justify-content: center;
-      align-items: center;
-    }
-    #texture-picker-overlay.visible { display: flex; }
-    #texture-picker {
-      background: #1e1e2a;
-      border: 1px solid rgba(255,255,255,0.15);
-      border-radius: 10px;
-      padding: 16px;
-      width: 420px;
-      max-height: 60vh;
-      display: flex;
-      flex-direction: column;
-      font-family: system-ui, sans-serif;
-      color: #ddd;
-    }
-    #texture-picker h3 {
-      margin-bottom: 12px;
-      font-size: 14px;
-      font-weight: 600;
-    }
-    #texture-picker-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-      overflow-y: auto;
-    }
-    .tex-card {
-      background: rgba(255,255,255,0.06);
-      border: 2px solid transparent;
-      border-radius: 8px;
-      padding: 6px;
-      cursor: pointer;
-      text-align: center;
-      transition: border-color 0.15s;
-    }
-    .tex-card:hover { border-color: rgba(0,200,255,0.5); }
-    .tex-card img {
-      width: 100%;
-      aspect-ratio: 1;
-      object-fit: cover;
-      border-radius: 4px;
-    }
-    .tex-card .tex-name {
-      font-size: 11px;
-      margin-top: 4px;
-      color: rgba(255,255,255,0.7);
-    }
-
-    /* Colour picker */
-    #colour-picker-overlay {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.7);
-      z-index: 200;
-      display: none;
-      justify-content: center;
-      align-items: center;
-    }
-    #colour-picker-overlay.visible { display: flex; }
-    #colour-picker {
-      background: #1e1e2a;
-      border: 1px solid rgba(255,255,255,0.15);
-      border-radius: 10px;
-      padding: 16px;
-      width: 240px;
-    }
-
-    /* Controls help overlay */
-    #controls-overlay {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.75);
-      z-index: 300;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      font-family: system-ui, sans-serif;
-      color: #ddd;
-    }
-    #controls-overlay.hidden { display: none; }
-    #controls-panel {
-      background: #1a1a2e;
-      border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 14px;
-      padding: 32px 40px;
-      max-width: 820px;
-      width: 90vw;
-      max-height: 85vh;
-      overflow-y: auto;
-      position: relative;
-    }
-    #controls-panel h2 {
-      text-align: center;
-      font-size: 18px;
-      font-weight: 600;
-      margin: 0 0 24px;
-      color: #fff;
-    }
-    #controls-columns {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 32px;
-    }
-    .ctrl-col h3 {
-      font-size: 14px;
-      font-weight: 600;
-      margin: 0 0 12px;
-      padding-bottom: 6px;
-      border-bottom: 1px solid rgba(255,255,255,0.1);
-    }
-    .ctrl-col h3:not(:first-child) { margin-top: 16px; }
-    .ctrl-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 4px 0;
-      font-size: 13px;
-      line-height: 1.6;
-    }
-    .ctrl-row .ctrl-key {
-      display: inline-block;
-      padding: 1px 7px;
-      border-radius: 4px;
-      background: rgba(255,255,255,0.12);
-      font-size: 12px;
-      font-family: inherit;
-      min-width: 28px;
-      text-align: center;
-      white-space: nowrap;
-      margin-left: 12px;
-      flex-shrink: 0;
-    }
-    .ctrl-row .ctrl-desc {
-      color: rgba(255,255,255,0.75);
-    }
-    #controls-close {
-      position: absolute;
-      top: 14px; right: 18px;
-      background: none; border: none;
-      color: rgba(255,255,255,0.5);
-      font-size: 22px;
-      cursor: pointer;
-      line-height: 1;
-    }
-    #controls-close:hover { color: #fff; }
-    .ctrl-img {
-      margin-top: 16px;
-      text-align: center;
-    }
-    .ctrl-img img {
-      max-width: 100%;
-      border-radius: 8px;
-      border: 1px solid rgba(255,255,255,0.08);
-    }
-    .ctrl-img-caption {
-      font-size: 11px;
-      color: rgba(255,255,255,0.4);
-      margin-top: 6px;
-    }
-  </style>
+  <title>План → 3D — прогулка по дому</title>
+  <meta name="description" content="Загрузите SVG-планировку, осмотрите дом в 3D, расставьте мебель и сохраните панорамы 360°." />
+  <meta name="theme-color" content="#171d21" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/src/styles.css" />
 </head>
 <body>
-  <div id="picker-bar">
-    <select id="plan-picker" class="ui-panel"></select>
-    <button id="btn-download" class="picker-btn" title="Download session">Download</button>
-    <button id="btn-upload" class="picker-btn" title="Import SVG or ZIP">Import SVG/ZIP</button>
-    <button id="btn-delete" class="picker-btn" title="Delete current session">Delete</button>
+  <header id="picker-bar">
+    <a class="brand" href="/" aria-label="План в 3D — главная"><span class="brand-symbol">3D</span><span>План <span class="brand-separator">/</span> Пространство<small>Floorplan2Walkthru</small></span></a>
+    <label class="project-field"><span>Планировка</span><select id="plan-picker" class="ui-panel" aria-label="Планировка"></select></label>
+    <div class="project-actions">
+      <button id="btn-upload" class="picker-btn primary" title="Загрузить SVG CubiCasa или проект ZIP">Загрузить план</button>
+      <button id="btn-download" aria-label="Скачать ZIP" class="picker-btn" title="Скачать проект с панорамами в ZIP">Скачать ZIP</button>
+      <button id="btn-delete" class="picker-btn danger" title="Удалить текущий проект из этого браузера">Удалить</button>
+    </div>
+  </header>
+  <div id="scene-status" role="status" aria-live="polite">Загружаем планировку и 3D-модели…</div>
+  <div id="loading-screen"><span class="loading-spinner"></span><h1>Открываем пространство</h1><p>Загружаем стены, материалы и мебель</p></div>
+  <nav id="scene-toolbar" aria-label="Инструменты просмотра">
+    <button id="btn-plan" class="picker-btn" title="Вид сверху (B)">План сверху</button>
+    <button id="btn-edit" class="picker-btn" aria-pressed="false" title="Редактировать мебель и отделку (E)">Редактировать</button>
+    <button id="btn-panorama" class="picker-btn" title="Снять панораму текущей комнаты (P)">Панорама 360°</button>
+    <select id="pano-quality" aria-label="Разрешение панорамы"><option value="2048">2K</option><option value="4096" selected>4K</option><option value="8192">8K</option></select>
+    <button id="btn-help" class="picker-btn" title="Управление и форматы (Q)">Помощь</button>
+  </nav>
+  <div id="touch-movement" aria-label="Движение по дому">
+    <button data-move="forward" aria-label="Вперёд">↑</button><button data-move="left" aria-label="Влево">←</button><button data-move="backward" aria-label="Назад">↓</button><button data-move="right" aria-label="Вправо">→</button>
   </div>
+  <div id="storage-note">Проекты сохраняются в этом браузере · панорамы — в скачанном ZIP</div>
 
   <div id="controls-info" class="ui-panel">
-    <div class="mode-label" id="mode-label">Free Cursor Mode</div>
-    <div><kbd>WASD</kbd> Move</div>
-    <div><kbd>Click+Drag</kbd> Look around</div>
-    <div><kbd>Tab</kbd> Toggle FPS lock</div>
-    <div><kbd>E</kbd> Toggle edit mode</div>
-    <div><kbd>F</kbd> Show/hide doors</div>
-    <div><kbd>M</kbd> Toggle minimap</div>
-    <div><kbd>Q</kbd> All controls</div>
+    <div class="mode-label" id="mode-label">Прогулка по дому</div>
+    <div><kbd>WASD</kbd> Движение</div>
+    <div><kbd>Мышь</kbd> Потяните для обзора</div>
+    <div><kbd>Tab</kbd> Захват курсора</div>
+    <div><kbd>E</kbd> Мебель и отделка</div>
+    <div><kbd>F</kbd> Показать / скрыть двери</div>
+    <div><kbd>M</kbd> Мини-план</div>
+    <div><kbd>Q</kbd> Помощь</div>
   </div>
 
-  <div id="edit-mode-badge">EDIT MODE <span id="gizmo-label"></span></div>
+  <div id="edit-mode-badge">РЕДАКТИРОВАНИЕ <span id="gizmo-label"></span></div>
 
   <div id="minimap-container">
     <div id="room-label"></div>
@@ -437,49 +56,49 @@
   <!-- Object picker modal -->
   <div id="object-picker-overlay">
     <div id="object-picker">
-      <input id="object-picker-search" type="text" placeholder="Search furniture..." autocomplete="off" />
+      <input id="object-picker-search" type="text" placeholder="Найти мебель…" autocomplete="off" />
       <div id="object-picker-grid"></div>
     </div>
   </div>
 
   <!-- Surface context menu -->
   <div id="surface-menu">
-    <div class="surface-menu-item" data-action="retexture">Change Texture</div>
-    <div class="surface-menu-item" data-action="colour">Pick Colour</div>
-    <div class="surface-menu-item" data-action="add">Add Furniture</div>
-    <div class="surface-menu-item cancel" data-action="cancel">Cancel</div>
+    <div class="surface-menu-item" data-action="retexture">Выбрать материал</div>
+    <div class="surface-menu-item" data-action="colour">Выбрать цвет</div>
+    <div class="surface-menu-item" data-action="add">Добавить мебель</div>
+    <div class="surface-menu-item cancel" data-action="cancel">Отмена</div>
   </div>
 
   <!-- Furniture context menu -->
   <div id="furniture-menu">
-    <div class="surface-menu-item" data-action="swap">Swap Model</div>
-    <div class="surface-menu-item" data-action="delete" style="color:#f66;">Delete</div>
-    <div class="surface-menu-item cancel" data-action="cancel">Cancel</div>
+    <div class="surface-menu-item" data-action="swap">Заменить модель</div>
+    <div class="surface-menu-item danger" data-action="delete" >Удалить</div>
+    <div class="surface-menu-item cancel" data-action="cancel">Отмена</div>
   </div>
 
   <!-- Door context menu -->
   <div id="door-menu">
-    <div class="surface-menu-item" data-action="retexture">Change Texture</div>
-    <div class="surface-menu-item" data-action="colour">Pick Colour</div>
-    <div class="surface-menu-item" data-action="delete" style="color:#f66;">Delete Door</div>
-    <div class="surface-menu-item cancel" data-action="cancel">Cancel</div>
+    <div class="surface-menu-item" data-action="retexture">Выбрать материал</div>
+    <div class="surface-menu-item" data-action="colour">Выбрать цвет</div>
+    <div class="surface-menu-item danger" data-action="delete" >Удалить дверь</div>
+    <div class="surface-menu-item cancel" data-action="cancel">Отмена</div>
   </div>
 
   <!-- Colour picker modal -->
   <div id="colour-picker-overlay">
     <div id="colour-picker">
-      <h3 style="font-size:14px;margin-bottom:12px;font-weight:600;color:#ddd;font-family:system-ui,sans-serif;">Pick Colour</h3>
+      <h3 style="font-size:14px;margin-bottom:12px;font-weight:600;color:#ddd;font-family:system-ui,sans-serif;">Выбрать цвет</h3>
       <input type="color" id="colour-picker-input" value="#ffffff" style="width:100%;height:60px;border:none;border-radius:6px;cursor:pointer;background:none;">
       <div style="display:flex;align-items:center;gap:8px;margin-top:10px;font-family:system-ui,sans-serif;font-size:12px;color:#aaa;">
-        <label for="colour-intensity">Intensity</label>
+        <label for="colour-intensity">Насыщенность</label>
         <input type="range" id="colour-intensity" min="0" max="100" value="100" style="flex:1;">
         <span id="colour-intensity-val" style="width:32px;text-align:right;">100%</span>
       </div>
-      <p style="font-family:system-ui,sans-serif;font-size:11px;color:#666;margin-top:4px;">0% = texture only, 100% = solid colour</p>
+      <p style="font-family:system-ui,sans-serif;font-size:11px;color:#666;margin-top:4px;">0% — текстура, 100% — сплошной цвет</p>
       <div style="display:flex;gap:8px;margin-top:12px;">
-        <button id="colour-apply" class="picker-btn" style="flex:1;">Apply</button>
-        <button id="colour-none" class="picker-btn" style="flex:1;">None</button>
-        <button id="colour-cancel" class="picker-btn" style="flex:1;">Cancel</button>
+        <button id="colour-apply" class="picker-btn" style="flex:1;">Применить</button>
+        <button id="colour-none" class="picker-btn" style="flex:1;">Без цвета</button>
+        <button id="colour-cancel" class="picker-btn" style="flex:1;">Отмена</button>
       </div>
     </div>
   </div>
@@ -487,64 +106,47 @@
   <!-- Texture picker modal -->
   <div id="texture-picker-overlay">
     <div id="texture-picker">
-      <h3>Choose Texture</h3>
+      <h3>Выберите материал</h3>
       <div id="texture-picker-grid"></div>
     </div>
   </div>
 
   <!-- Controls help overlay (shown on startup) -->
-  <div id="controls-overlay">
+  <div id="controls-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="help-title">
     <div id="controls-panel">
-      <button id="controls-close">&times;</button>
-      <h2>Controls</h2>
+      <button id="controls-close" aria-label="Закрыть помощь">&times;</button>
+      <h2 id="help-title">Из планировки — в пространство</h2>
       <div id="controls-columns">
         <div class="ctrl-col">
-          <h3>Getting Started</h3>
-          <div class="ctrl-row"><span class="ctrl-desc">Load an SVG floor plan (tested with <a href="https://github.com/cubicasa/cubicasa5k" target="_blank" style="color:#6af;">CubiCasa5K</a>) or pick a preset from the dropdown.</span></div>
-          <div class="ctrl-row"><span class="ctrl-desc"><strong>Download</strong> exports a .zip of your full project (plan, furniture, camera, surfaces, G-buffers, panoramas).</span></div>
-          <div class="ctrl-row"><span class="ctrl-desc"><strong>Import SVG/ZIP</strong> restores a downloaded .zip or imports a new .svg.</span></div>
-
-          <h3>Navigation</h3>
-          <div class="ctrl-row"><span class="ctrl-desc">Move</span><span class="ctrl-key">W A S D</span></div>
-          <div class="ctrl-row"><span class="ctrl-desc">Look around</span><span class="ctrl-key">Click + Drag</span></div>
-          <div class="ctrl-row"><span class="ctrl-desc">Toggle FPS lock</span><span class="ctrl-key">Tab</span></div>
-          <div class="ctrl-row"><span class="ctrl-desc">Teleport</span><span class="ctrl-key">Minimap Click</span></div>
-
-          <h3>Tools</h3>
-          <div class="ctrl-row"><span class="ctrl-desc">Toggle minimap</span><span class="ctrl-key">M</span></div>
-          <div class="ctrl-row"><span class="ctrl-desc">Toggle doors</span><span class="ctrl-key">F</span></div>
-          <div class="ctrl-row"><span class="ctrl-desc">Bird's-eye view</span><span class="ctrl-key">B</span></div>
-          <div class="ctrl-row"><span class="ctrl-desc">Show this help</span><span class="ctrl-key">Q</span></div>
-
-          <h3>G-Buffer Recording</h3>
-          <div class="ctrl-row"><span class="ctrl-desc">Press <strong>C</strong> to start recording your camera path, press <strong>C</strong> again to stop. Then generate 6 G-buffer video passes (RGB, albedo, depth, normal, metallic, roughness) included in your save .zip.</span></div>
-          <div class="ctrl-img"><img src="/assets/gbuffer.png" alt="G-buffer output" /></div>
-
-          <h3>Panorama Capture</h3>
-          <div class="ctrl-row"><span class="ctrl-desc">Press <strong>P</strong> to capture a 360 equirectangular panorama (8K) from your current position. Generates two versions per room: bare (untextured) and furnished (with white floor). Saved in the .zip under <code>panoramas/</code>.</span></div>
-          <div class="ctrl-img"><img src="/assets/pano.jpeg" alt="Panorama output" /></div>
+          <h3>Начните с планировки</h3>
+          <p>Выберите один из трёх примеров или загрузите SVG с разметкой <a href="https://github.com/cubicasa/cubicasa5k" target="_blank" rel="noopener noreferrer">CubiCasa</a>: стены, комнаты, окна и двери. Обычная картинка JPG/PNG и произвольный SVG пока не поддерживаются.</p>
+          <p><a href="/plans/plan_arch3/model.svg" download="house-example.svg">Скачать пример SVG</a></p>
+          <h3>Прогулка по дому</h3>
+          <div class="ctrl-row"><span class="ctrl-desc">Движение</span><kbd>W A S D / ↑ ↓ ← →</kbd></div>
+          <div class="ctrl-row"><span class="ctrl-desc">Повернуть камеру</span><kbd>Потянуть мышью / пальцем</kbd></div>
+          <div class="ctrl-row"><span class="ctrl-desc">Перейти в комнату</span><kbd>Нажать на мини-план</kbd></div>
+          <div class="ctrl-row"><span class="ctrl-desc">Вид сверху</span><kbd>B</kbd></div>
+          <div class="ctrl-row"><span class="ctrl-desc">Скрыть двери / мини-план</span><kbd>F / M</kbd></div>
+          <div class="ctrl-row"><span class="ctrl-desc">Захватить курсор</span><kbd>Tab на сцене / Esc — выход</kbd></div>
+          <h3>Сохранение</h3>
+          <p>Планировка, мебель и отделка сохраняются в этом браузере. «Скачать ZIP» выгружает проект вместе со снятыми панорамами. ZIP можно загрузить обратно. Перед сменой проекта или закрытием вкладки скачайте панорамы: они хранятся в памяти до конца сеанса.</p>
         </div>
         <div class="ctrl-col">
-          <h3>Edit Mode</h3>
-          <div class="ctrl-row"><span class="ctrl-desc">Toggle edit mode</span><span class="ctrl-key">E</span></div>
-          <div class="ctrl-row"><span class="ctrl-desc">Surface context menu</span><span class="ctrl-key">Right-click wall / floor / ceiling</span></div>
-          <div class="ctrl-row"><span class="ctrl-desc">Door context menu</span><span class="ctrl-key">Right-click door</span></div>
-          <div class="ctrl-row"><span class="ctrl-desc">Furniture context menu</span><span class="ctrl-key">Right-click furniture</span></div>
-
-          <h3>Furniture Editing</h3>
-          <div class="ctrl-row"><span class="ctrl-desc">Select / enter Move mode</span><span class="ctrl-key">Left-click</span></div>
-          <div class="ctrl-row" style="padding-left:16px"><span class="ctrl-desc">Move furniture</span><span class="ctrl-key">Drag</span></div>
-          <div class="ctrl-row" style="padding-left:16px"><span class="ctrl-desc">Rotate furniture</span><span class="ctrl-key">Scroll wheel</span></div>
-          <div class="ctrl-row"><span class="ctrl-desc">Switch to Scale / Height</span><span class="ctrl-key">Left-click again</span></div>
-          <div class="ctrl-row" style="padding-left:16px"><span class="ctrl-desc">Scale furniture</span><span class="ctrl-key">Drag up/down</span></div>
-          <div class="ctrl-row" style="padding-left:16px"><span class="ctrl-desc">Raise / lower</span><span class="ctrl-key">Scroll wheel</span></div>
-          <div class="ctrl-row"><span class="ctrl-desc">Deselect</span><span class="ctrl-key">Esc</span></div>
-          <div class="ctrl-img"><img src="/assets/editmode.png" alt="Edit mode reference" /></div>
+          <h3>Мебель и отделка</h3>
+          <p>Нажмите «Редактировать» или E. Правой кнопкой мыши нажмите на стену, пол или дверь для смены цвета и текстуры. Через меню поверхности можно добавить мебель.</p>
+          <div class="ctrl-row"><span class="ctrl-desc">Выбрать и переместить предмет</span><kbd>Клик + перетаскивание</kbd></div>
+          <div class="ctrl-row"><span class="ctrl-desc">Повернуть</span><kbd>Колесо мыши</kbd></div>
+          <div class="ctrl-row"><span class="ctrl-desc">Масштаб / высота</span><kbd>Повторный клик</kbd></div>
+          <div class="ctrl-row"><span class="ctrl-desc">Снять выделение</span><kbd>Esc</kbd></div>
+          <h3>Панорама для нейросети</h3>
+          <p>Встаньте внутри комнаты и нажмите «Панорама 360°». Выберите 2K, 4K или 8K. В ZIP появятся две панорамы 2:1: без мебели и с мебелью. Их можно передать в Nano Banana или другой сервис стилизации. Генерация ИИ в этот сайт пока не подключена.</p>
+          <h3>Видео и ограничения</h3>
+          <p>C запускает запись пути камеры, повторное C — экспорт проходов рендера. Движок поддерживает один этаж, без лестниц. Высота стен — 2,2 м; импорт SVG по умолчанию использует масштаб 1 единица = 1 см. Проверьте размеры перед использованием.</p>
         </div>
       </div>
     </div>
   </div>
 
-  <script type="module" src="/src/main.ts"></script>
+  <script type="module" src="/src/bootstrap.ts"></script>
 </body>
 </html>

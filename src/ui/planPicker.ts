@@ -1,3 +1,4 @@
+import { showStatus, showError } from './status';
 import {
   listSessions, getSession, deleteSession,
   exportSessionZip, importFile,
@@ -12,10 +13,10 @@ export interface PlanInfo {
 }
 
 export interface SessionPickerCallbacks {
-  onSelectPreset: (planId: string) => void;
-  onSelectSession: (session: SessionRecord) => void;
-  onImportZip: (result: Extract<ImportResult, { type: 'zip' }>) => void;
-  onImportSvg: (result: Extract<ImportResult, { type: 'svg' }>) => void;
+  onSelectPreset: (planId: string) => void | Promise<void>;
+  onSelectSession: (session: SessionRecord) => void | Promise<void>;
+  onImportZip: (result: Extract<ImportResult, { type: 'zip' }>) => void | Promise<void>;
+  onImportSvg: (result: Extract<ImportResult, { type: 'svg' }>) => void | Promise<void>;
 }
 
 export class SessionPicker {
@@ -38,16 +39,11 @@ export class SessionPicker {
 
     this.rebuild();
 
-    selectEl.addEventListener('change', () => this.onSelectionChange());
+    selectEl.addEventListener('change', () => { void this.run(() => this.onSelectionChange()); });
 
-    // Disable all keyboard interaction with the <select>. The dropdown is
-    // mouse-only; letters would otherwise typeahead-select an option (clone
-    // sessions accidentally), and arrow keys would step through entries.
-    // Global keybinds still fire because we don't stopPropagation.
-    selectEl.addEventListener('keydown', (e) => e.preventDefault());
-
-    deleteBtn.addEventListener('click', () => {
+    deleteBtn.addEventListener('click', () => { void this.run(async () => {
       if (!this.currentSession) return;
+      if (!confirm('Удалить этот проект из браузера? Предварительно скачайте ZIP, если хотите его сохранить.')) return;
       const id = this.currentSession.id;
       deleteSession(id);
       this.currentSession = null;
@@ -55,13 +51,13 @@ export class SessionPicker {
       // Navigate to a remaining session, or fall back to the first preset.
       const remaining = listSessions();
       if (remaining.length > 0) {
-        this.callbacks.onSelectSession(remaining[remaining.length - 1]);
+        await this.callbacks.onSelectSession(remaining[remaining.length - 1]);
       } else if (this.presets.length > 0) {
-        this.callbacks.onSelectPreset(this.presets[0].id);
+        await this.callbacks.onSelectPreset(this.presets[0].id);
       }
-    });
+    }); });
 
-    downloadBtn.addEventListener('click', async () => {
+    downloadBtn.addEventListener('click', () => { void this.run(async () => {
       if (this.currentSession) {
         await exportSessionZip({
           name: this.currentSession.name,
@@ -70,7 +66,8 @@ export class SessionPicker {
           meta: this.currentSession.meta,
         });
       }
-    });
+        showStatus('Проект скачан в ZIP. Панорамы находятся в папке panoramas.');
+    }); });
 
     uploadBtn.addEventListener('click', async () => {
       try {
@@ -88,15 +85,15 @@ export class SessionPicker {
           } else {
             clearPanoramaBlobs();
           }
-          this.callbacks.onImportZip(result);
+          await this.run(() => this.callbacks.onImportZip(result));
         } else {
           // SVG upload — run parsing pipeline
           clearGBufferBlobs();
           clearPanoramaBlobs();
-          this.callbacks.onImportSvg(result);
+          await this.run(() => this.callbacks.onImportSvg(result));
         }
       } catch (e) {
-        console.warn('Import cancelled or failed:', e);
+        if (!(e instanceof Error && e.name === 'AbortError')) showError(e);
       }
     });
   }
@@ -109,7 +106,7 @@ export class SessionPicker {
 
     // Presets group
     const presetGroup = document.createElement('optgroup');
-    presetGroup.label = 'Presets';
+    presetGroup.label = 'Примеры планировок';
     for (const p of this.presets) {
       const opt = document.createElement('option');
       opt.value = `preset:${p.id}`;
@@ -122,7 +119,7 @@ export class SessionPicker {
     const sessions = listSessions();
     if (sessions.length > 0) {
       const sessionGroup = document.createElement('optgroup');
-      sessionGroup.label = 'Saved Sessions';
+      sessionGroup.label = 'Мои проекты в этом браузере';
       for (const s of sessions) {
         const opt = document.createElement('option');
         opt.value = `session:${s.id}`;
@@ -154,15 +151,26 @@ export class SessionPicker {
     this.presets = presets;
   }
 
-  private onSelectionChange() {
+  private busy = false;
+  private async run(action: () => void | Promise<void>) {
+    if (this.busy) return;
+    this.busy = true;
+    const controls = document.querySelectorAll<HTMLButtonElement | HTMLSelectElement>('#picker-bar button, #picker-bar select');
+    controls.forEach(el => el.disabled = true);
+    try { await action(); }
+    catch (error) { showError(error); }
+    finally { this.busy = false; controls.forEach(el => el.disabled = false); }
+  }
+
+  private async onSelectionChange() {
     const val = this.selectEl.value;
     if (val.startsWith('preset:')) {
       const planId = val.slice('preset:'.length);
-      this.callbacks.onSelectPreset(planId);
+      await this.callbacks.onSelectPreset(planId);
     } else if (val.startsWith('session:')) {
       const id = parseInt(val.slice('session:'.length), 10);
       const session = getSession(id);
-      if (session) this.callbacks.onSelectSession(session);
+      if (session) await this.callbacks.onSelectSession(session);
     }
   }
 }

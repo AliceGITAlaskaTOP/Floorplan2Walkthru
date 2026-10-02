@@ -392,7 +392,9 @@ export const FURNITURE_CATALOG: FurnitureMeta[] = [
     style: ['modern', 'contemporary'],
     dimensions: { w: 1.60, h: 0.80, d: 1.00 },
     description: 'Modern dining set with rectangular wood table, four grey upholstered armchairs, and decorative vases.',
-    gltfPath: 'modern_diningtable_set_4chairs_woodtable_vase/dining_table_set.glb',
+    gltfPath: import.meta.env.PROD
+      ? 'modern_diningtable_set_4chairs_woodtable_vase/dining_table_set.gltf'
+      : 'modern_diningtable_set_4chairs_woodtable_vase/dining_table_set.glb',
     placement: 'floor',
     scaleRange: { min: 0.7, max: 1.2 },
     thumbnailPath: 'modern_diningtable_set_4chairs_woodtable_vase.png',

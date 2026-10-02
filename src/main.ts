@@ -1,3 +1,5 @@
+import { showStatus, showError } from './ui/status';
+import { validatePlanSvg } from './cubicasa/validate';
 import * as THREE from 'three';
 import {
   EffectComposer,
@@ -210,7 +212,7 @@ const nav = new NavigationController(camera, renderer.domElement);
 
 const modeLabel = document.getElementById('mode-label')!;
 nav.setModeChangeHandler((mode) => {
-  modeLabel.textContent = mode === 'locked' ? 'FPS Mode (ESC to exit)' : 'Free Cursor Mode';
+  modeLabel.textContent = mode === 'locked' ? 'Прогулка · Esc — отпустить курсор' : 'Прогулка по дому';
 });
 
 // ── Minimap ──
@@ -263,6 +265,10 @@ const editMode = new EditModeController(
 // ── Core: apply a plan with a given scene state ──
 
 async function applyPlanWithState(session: SessionRecord) {
+  validatePlanSvg(session.svgText);
+  const parsedPlan = parseCubiCasa(session.svgText, session.meta);
+  if (!parsedPlan.rooms.length || !parsedPlan.walls.length) throw new Error("В планировке не найдены комнаты и стены.");
+  showStatus("Загружаем планировку и мебель…", false, true);
   // Flush the outgoing session's live camera position to its localStorage
   // record before swapping. Without this, navigating around in session A
   // then picking session B silently loses A's camera state.
@@ -277,7 +283,7 @@ async function applyPlanWithState(session: SessionRecord) {
   }
 
   const { state, svgText, meta } = session;
-  const plan = parseCubiCasa(svgText, meta);
+  const plan = parsedPlan;
   currentPlan = plan;
   currentSceneState = state;
   currentSession = session;
@@ -330,6 +336,8 @@ async function applyPlanWithState(session: SessionRecord) {
 
   console.log(`Loaded session "${session.name}" #${session.id} (${state.furniture.length} furniture pieces)`);
   saveBirdsEyeScreenshot();
+  document.getElementById('loading-screen')!.classList.add('hidden');
+  showStatus(`${session.name} · ${plan.rooms.length} помещений. Потяните сцену мышью для обзора.`);
 }
 
 async function loadPreset(planId: string) {
@@ -376,7 +384,7 @@ window.addEventListener('beforeunload', saveCameraState);
 const birdsEye = new BirdsEyeRenderer();
 
 function saveBirdsEyeScreenshot() {
-  if (!currentPlan || !currentSceneState) return;
+  if (!import.meta.env.DEV || !currentPlan || !currentSceneState) return;
   const dataUrl = birdsEye.capture(currentPlan, currentSceneState.furniture);
   fetch('/api/screenshot', {
     method: 'POST',
@@ -388,6 +396,7 @@ function saveBirdsEyeScreenshot() {
 // ── SVG import: auto-detect perimeter, create session from raw SVG ──
 async function importFromSvg(result: Extract<ImportResult, { type: 'svg' }>) {
   const { name, svgText } = result;
+  validatePlanSvg(svgText);
 
   // Auto-detect outer perimeter from SVG content
   const rawPerimeter = detectOuterPerimeter(svgText);
@@ -468,13 +477,14 @@ gbufferRecorder.onGenerated = () => {
 // ── Panorama renderer ──
 const panoramaRenderer = new PanoramaRenderer(renderer, scene);
 
+let isCapturing = false;
 async function capturePanorama() {
-  if (!currentPlan || !currentSceneState) return;
+  if (!currentPlan || !currentSceneState || isCapturing) return;
 
   // Find which room the camera is in
   const room = nav.getCurrentRoom(camera.position.x, camera.position.z);
   if (!room) {
-    console.warn('Panorama: camera is not inside any room');
+    showStatus('Перейдите внутрь комнаты: нажмите на неё на мини-плане.', true);
     return;
   }
 
@@ -486,7 +496,12 @@ async function capturePanorama() {
     camera.position.z,
   );
 
-  const { bare, furnished } = await panoramaRenderer.capture(panoPos);
+  isCapturing = true;
+  const button = document.getElementById('btn-panorama') as HTMLButtonElement;
+  button.disabled = true;
+  try {
+  const width = Number((document.getElementById('pano-quality') as HTMLSelectElement).value);
+  const { bare, furnished } = await panoramaRenderer.capture(panoPos, width);
 
   // Save position metadata to scene state
   if (!currentSceneState.panoramas) currentSceneState.panoramas = {};
@@ -503,7 +518,15 @@ async function capturePanorama() {
   // Persist state
   saveCameraState();
 
+  showStatus(`Панорама готова: ${room.name}. Нажмите «Скачать ZIP», чтобы сохранить её.`, false, true);
   console.log(`Panoramas saved for ${room.name} — bare: ${(bare.size / 1024 / 1024).toFixed(1)} MB, furnished: ${(furnished.size / 1024 / 1024).toFixed(1)} MB`);
+
+  } catch (error) {
+    showError(error);
+  } finally {
+    isCapturing = false;
+    button.disabled = false;
+  }
 }
 
 // ── Controls help overlay ──
@@ -522,11 +545,12 @@ function toggleControlsOverlay() {
 // ── Keyboard shortcuts ──
 let minimapVisible = true;
 window.addEventListener('keydown', (e) => {
+  if (isCapturing) return;
   // Suppress all shortcuts when typing in a search field
-  if (editMode.isSearchFocused) return;
+  if (editMode.isSearchFocused || (e.target instanceof HTMLElement && e.target.matches('input, textarea, select, button'))) return;
 
   // Controls overlay — always available
-  if (e.key === 'q' || e.key === 'Q') {
+  if (e.code === 'KeyQ') {
     toggleControlsOverlay();
     return;
   }
@@ -538,23 +562,23 @@ window.addEventListener('keydown', (e) => {
   // Don't process other shortcuts while controls overlay is open
   if (!controlsOverlay.classList.contains('hidden')) return;
 
-  if (e.key === 'e' || e.key === 'E') {
-    editMode.toggle();
+  if (e.code === 'KeyE') {
+    toggleEdit();
   }
-  if (e.key === 'm' || e.key === 'M') {
+  if (e.code === 'KeyM') {
     minimapVisible = !minimapVisible;
     (document.getElementById('minimap-container') as HTMLElement).style.display =
       minimapVisible ? '' : 'none';
   }
-  if (e.key === 'f' || e.key === 'F') {
+  if (e.code === 'KeyF') {
     doorPanels.toggle();
   }
   // B and C are disabled in edit mode
   if (!editMode.isEnabled) {
-    if (e.key === 'c' || e.key === 'C') {
+    if (e.code === 'KeyC') {
       gbufferRecorder.toggle();
     }
-    if (e.key === 'b' || e.key === 'B') {
+    if (e.code === 'KeyB') {
       if (!currentPlan || !currentSceneState) return;
       if (birdsEye.isVisible) {
         birdsEye.hideOverlay();
@@ -562,7 +586,7 @@ window.addEventListener('keydown', (e) => {
         birdsEye.showOverlay(currentPlan, currentSceneState.furniture);
       }
     }
-    if (e.key === 'p' || e.key === 'P') {
+    if (e.code === 'KeyP') {
       capturePanorama();
     }
   }
@@ -594,7 +618,10 @@ async function init() {
   }
 }
 
-init();
+init().catch((error) => {
+  document.getElementById('loading-screen')!.classList.add('hidden');
+  showError(error);
+});
 
 // ── Resize ──
 window.addEventListener('resize', () => {
@@ -609,7 +636,7 @@ window.addEventListener('resize', () => {
 function animate() {
   requestAnimationFrame(animate);
 
-  nav.update();
+  if (!isCapturing && controlsOverlay.classList.contains('hidden')) nav.update();
 
   if (currentPlan) {
     const room = nav.getCurrentRoom(camera.position.x, camera.position.z);
@@ -621,6 +648,7 @@ function animate() {
     }
   }
 
+  if (isCapturing) return;
   gbufferRecorder.captureFrame();
 
   if (minimapVisible) minimap.render(camera);
@@ -628,3 +656,28 @@ function animate() {
 }
 
 animate();
+
+// Visible controls mirror the existing keyboard workflow.
+function toggleEdit() {
+  editMode.toggle();
+  document.getElementById('btn-edit')!.setAttribute('aria-pressed', String(editMode.isEnabled));
+  showStatus(editMode.isEnabled ? 'Правый клик по поверхности — материалы и мебель. Клик по предмету — перемещение.' : 'Прогулка по дому');
+}
+document.getElementById('btn-edit')!.addEventListener('click', toggleEdit);
+document.getElementById('btn-plan')!.addEventListener('click', () => {
+  if (currentPlan && currentSceneState) birdsEye.showOverlay(currentPlan, currentSceneState.furniture);
+});
+document.getElementById('btn-panorama')!.addEventListener('click', () => { void capturePanorama(); });
+document.getElementById('btn-help')!.addEventListener('click', toggleControlsOverlay);
+document.getElementById('btn-download')!.addEventListener('click', saveCameraState, { capture: true });
+for (const button of document.querySelectorAll<HTMLButtonElement>('[data-move]')) {
+  const direction = button.dataset.move as 'forward' | 'backward' | 'left' | 'right';
+  button.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    button.setPointerCapture(event.pointerId);
+    nav.setMovement(direction, true);
+  });
+  for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+    button.addEventListener(event, () => nav.setMovement(direction, false));
+  }
+}

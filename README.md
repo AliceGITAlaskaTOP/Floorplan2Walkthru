@@ -1,3 +1,5 @@
+> Русская веб-версия: основные действия вынесены в кнопки, добавлено сенсорное управление и резервный 2D-просмотр. Инструкции по сборке, проверке и ограничениям: [DEPLOYMENT.md](DEPLOYMENT.md). Исходная документация проекта сохранена ниже.
+
 # Floorplan2Walkthru
 
 **Turn an architectural floor plan SVG into a navigable, editable 3D walkthrough**

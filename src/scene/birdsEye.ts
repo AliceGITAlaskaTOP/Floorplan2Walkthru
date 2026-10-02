@@ -244,7 +244,7 @@ export class BirdsEyeRenderer {
     overlay.appendChild(img);
 
     const hint = document.createElement('div');
-    hint.textContent = 'Press B or click to close';
+    hint.textContent = 'Нажмите B или кликните, чтобы вернуться к прогулке';
     hint.style.cssText = `
       position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
       color: rgba(255,255,255,0.5); font: 13px system-ui, sans-serif;

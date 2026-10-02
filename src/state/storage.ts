@@ -1,3 +1,4 @@
+import { validatePlanSvg } from '../cubicasa/validate';
 import JSZip from 'jszip';
 import { SceneState } from './types';
 import { PlanMeta } from '../cubicasa/metadata';
@@ -181,6 +182,7 @@ export function importFile(): Promise<ImportResult> {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.zip,.svg';
+    input.oncancel = () => reject(new DOMException('Загрузка отменена', 'AbortError'));
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) return reject(new Error('No file selected'));
@@ -188,7 +190,8 @@ export function importFile(): Promise<ImportResult> {
       const ext = file.name.split('.').pop()?.toLowerCase();
 
       if (ext === 'svg') {
-        const text = await file.text();
+        let text: string;
+        try { text = await file.text(); validatePlanSvg(text); } catch (error) { reject(error); return; }
         resolve({
           type: 'svg',
           name: file.name.replace(/\.svg$/i, ''),
@@ -206,12 +209,18 @@ export function importFile(): Promise<ImportResult> {
           const svgFile = zip.file('model.svg');
 
           if (!sessionFile || !configFile || !svgFile) {
-            return reject(new Error('Invalid session zip: missing required files'));
+            return reject(new Error('В ZIP отсутствуют session.json, config.json или model.svg'));
           }
 
           const sessionData = JSON.parse(await sessionFile.async('text'));
           const configData = JSON.parse(await configFile.async('text'));
           const svgText = await svgFile.async('text');
+          validatePlanSvg(svgText);
+          if (!sessionData.state || !Array.isArray(sessionData.state.furniture) ||
+              !Number.isFinite(configData.scaleMetersPerUnit) || configData.scaleMetersPerUnit <= 0 ||
+              !Array.isArray(configData.outerPerimeter)) {
+            throw new Error('Некорректный формат проекта ZIP. Загрузите архив, сохранённый этим приложением.');
+          }
 
           const meta: PlanMeta = {
             id: sessionData.state?.planId || file.name.replace(/\.zip$/i, ''),
@@ -252,12 +261,12 @@ export function importFile(): Promise<ImportResult> {
             panoramaBlobs: panoBlobs,
           });
         } catch (e) {
-          reject(new Error(`Failed to read zip: ${e}`));
+          reject(new Error(`Не удалось прочитать ZIP: ${e}`));
         }
         return;
       }
 
-      reject(new Error(`Unsupported file type: .${ext}`));
+      reject(new Error(`Неподдерживаемый формат: .${ext}`));
     };
     input.click();
   });
